@@ -199,7 +199,7 @@
       </g>
     </g>
   </svg>
-  <div id="particles" aria-hidden="true" style="position:fixed;inset:0;pointer-events:none;z-index:-50"></div>
+  <div id="particles" aria-hidden="true" style="position:fixed;inset:0;pointer-events:none;z-index:-1"></div>
 
   <!-- İnce imza: A -->
   <div class="sig" aria-hidden="true">A 🤍 N</div>
@@ -238,7 +238,7 @@
 
 <!-- Arka plan müziği: Yerel MP3 (önerilen) -->
 <!-- Repo köküne music.mp3 yükle. İsim tam olarak 'music.mp3' olsun. -->
-<audio id="bgm" src="Apocalypse%20-%20Cigarettes%20After%20Sex.mp3" preload="auto" loop playsinline></audio>
+<audio id="bgm" src="music.mp3" preload="auto" loop playsinline></audio>
 
 <script>
   // Buttons & elements
@@ -253,7 +253,7 @@
     const map={tap:[18], soft:[8], success:[12,8,12], heavy:[30]};
     navigator.vibrate(map[kind]||[15]);
   }
-  // Gerekli elemanlar
+  // Gift elements
   const openGiftBtn = document.getElementById('openGift');
   const giftWrap = document.getElementById('giftWrap');
   const giftCard = document.getElementById('giftCard');
@@ -276,6 +276,49 @@
   });
 
   // Heart burst when starting
+
+  // Metin döngüsü + sayaçlar
+  const quoteEl = document.getElementById('quote');
+  const sinceEl = document.getElementById('since');
+  const nextEl = document.getElementById('next');
+
+  const quotes = [
+    '“Kalbim, adını ezberledi.”',
+    '“Sen gülünce, gece mora boyanıyor.”',
+    '“Yanımda olman dünyayı kolaylaştırıyor.”'
+  ];
+  let qi = 0;
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  async function typeText(t){ quoteEl.textContent=''; for(const ch of t){ quoteEl.textContent+=ch; await sleep(24+Math.random()*22);} }
+  async function eraseText(){ while(quoteEl.textContent.length){ quoteEl.textContent=quoteEl.textContent.slice(0,-1); await sleep(12+Math.random()*18);} }
+  (async function rotateQuotes(){ while(true){ await typeText(quotes[qi%quotes.length]); qi++; await sleep(1600); await eraseText(); await sleep(250);} })();
+
+  // Tarih hesaplaması (Safari uyumlu)
+  const START = new Date(Date.UTC(2022,2,9)); // 9 Mart 2022
+  const START_MS = START.getTime();
+  function tickSince(){
+    try{
+      const now = Date.now();
+      const diff = now - START_MS;
+      const days = Math.floor(diff/86400000);
+      const hours = Math.floor(diff/3600000);
+      sinceEl.textContent = `Birlikte: ${days} gün • ${hours} saat`;
+    }catch(err){ sinceEl.textContent = 'Birlikte: — gün'; }
+  }
+  tickSince(); setInterval(tickSince, 1000);
+  function nextAnniversary(){
+    const now = new Date();
+    const y = now.getFullYear();
+    const target = new Date(y, 2, 9, 0,0,0); // 9 Mart
+    const t = (target < now) ? new Date(y+1,2,9,0,0,0) : target;
+    const diff = t - now;
+    const d = Math.floor(diff/86400000);
+    const h = Math.floor((diff%86400000)/3600000);
+    const m = Math.floor((diff%3600000)/60000);
+    nextEl.textContent = `Sonraki yıldönümüne: ${d}g ${h}s ${m}dk`;
+  }
+  nextAnniversary(); setInterval(nextAnniversary, 60000);
+
 
 // Firework function
 function fireworkBurst(){
