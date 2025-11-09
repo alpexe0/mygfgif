@@ -246,6 +246,16 @@
   const musicBtn = document.getElementById('music');
   const bgm = document.getElementById('bgm');
   let bgmStarted = false;
+  // Haptic helper
+  function haptic(kind='tap'){
+    if(!('vibrate' in navigator)) return; // desktop'ta sessizce geç
+    const map={tap:[18], soft:[8], success:[12,8,12], heavy:[30]};
+    navigator.vibrate(map[kind]||[15]);
+  }
+  // Gift refs (MINI GAME için GEREKLİ)
+  const openGiftBtn = document.getElementById('openGift');
+  const giftWrap   = document.getElementById('giftWrap');
+  const giftCard   = document.getElementById('giftCard');
   async function startBgm(){
     try{ await bgm.play(); musicBtn.textContent='Müzik Çalıyor 🎵'; musicBtn.disabled=true; bgmStarted=true; }
     catch(e){ musicBtn.textContent='Müziği Başlat (izin ver)'; bgmStarted=false; }
