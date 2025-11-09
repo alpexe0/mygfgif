@@ -247,6 +247,16 @@
   const musicBtn = document.getElementById('music');
   const bgm = document.getElementById('bgm');
   let bgmStarted = false;
+  // Haptic helper (mobile titreşim)
+  function haptic(kind='tap'){
+    if(!('vibrate' in navigator)) return;
+    const map={tap:[18], soft:[8], success:[12,8,12], heavy:[30]};
+    navigator.vibrate(map[kind]||[15]);
+  }
+  // Gerekli elemanlar
+  const openGiftBtn = document.getElementById('openGift');
+  const giftWrap = document.getElementById('giftWrap');
+  const giftCard = document.getElementById('giftCard');
   async function startBgm(){
     if(bgmStarted) return; bgmStarted = true;
     try{ await bgm.play(); musicBtn.textContent='Müzik Çalıyor 🎵'; musicBtn.disabled=true; haptic('success'); }
@@ -256,13 +266,14 @@
   // Mobile autoplay fixer: ilk dokunuşta başlatmayı dene
   const firstTouch = ()=>{ startBgm(); document.removeEventListener('touchend', firstTouch); document.removeEventListener('click', firstTouch); };
   document.addEventListener('touchend', firstTouch, {once:true});
-  document.addEventListener('click', firstTouch, {once:true}); ytPlayer.playVideo(); }catch(e){ const ifr=document.getElementById('ytbg'); ifr.src = ifr.src.replace('mute=1','mute=0').replace('autoplay=0','autoplay=1'); }
-    musicBtn.textContent='Müzik Çalıyor 🎵'; musicBtn.disabled=true; haptic('success');
-  });
-  // Mobile autoplay fixer: ilk dokunuşta oynat
-  const firstTouch = ()=>{ try{ ytPlayer.unMute(); ytPlayer.playVideo(); }catch(e){} document.removeEventListener('touchend', firstTouch); document.removeEventListener('click', firstTouch); };
-  document.addEventListener('touchend', firstTouch, {once:true});
   document.addEventListener('click', firstTouch, {once:true});
+
+  // Başlat/Durdur düğmesi
+  btn.addEventListener('click', ()=>{
+    lily.classList.toggle('cycle');
+    btn.textContent = lily.classList.contains('cycle') ? 'Durdur' : 'Başlat';
+    if (lily.classList.contains('cycle')) heartBurst();
+  });
 
   // Heart burst when starting
 
@@ -373,7 +384,12 @@ startParticles();
 
   // Show game after card opens
   openGiftBtn.addEventListener('click', ()=>{
-    setTimeout(()=> forgiveGame.style.display='block', 600);
+    giftWrap.style.display='block';
+    haptic('success');
+    if(giftCard){ giftCard.classList.add('pulse'); setTimeout(()=>giftCard.classList.remove('pulse'),1200); }
+    const fo=document.getElementById('fadeOverlay'); if(fo){ fo.classList.add('show'); setTimeout(()=>fo.classList.remove('show'),900); }
+    setTimeout(()=> { const g=document.getElementById('forgiveGame'); if(g) g.style.display='block'; }, 600);
+  });
   });
 
   // Affettim
