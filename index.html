@@ -237,7 +237,7 @@
 
 
 <!-- Arka plan müziği: YouTube -->
-<iframe id="ytbg" width="0" height="0" src="https://www.youtube.com/embed/sElE_BfQ67s?autoplay=1&loop=1&playlist=sElE_BfQ67s&enablejsapi=1&mute=0" frameborder="0" allow="autoplay; encrypted-media" style="position:absolute;left:-9999px;top:-9999px"></iframe>
+<iframe id="ytbg" width="0" height="0" src="https://www.youtube.com/embed/sElE_BfQ67s?autoplay=1&loop=1&playlist=sElE_BfQ67s&enablejsapi=1&mute=0&playsinline=1" frameborder="0" allow="autoplay; encrypted-media" style="position:absolute;left:-9999px;top:-9999px"></iframe>
 
 <script>
   // Buttons & elements
@@ -321,13 +321,17 @@ openGiftBtn.addEventListener('click',()=>{
     try{ ytPlayer.unMute(); ytPlayer.playVideo(); }catch(e){ const ifr=document.getElementById('ytbg'); ifr.src = ifr.src.replace('mute=1','mute=0').replace('autoplay=0','autoplay=1'); }
     musicBtn.textContent='Müzik Çalıyor 🎵'; musicBtn.disabled=true; haptic('success');
   });
+  // Mobile autoplay fixer: ilk dokunuşta oynat
+  const firstTouch = ()=>{ try{ ytPlayer.unMute(); ytPlayer.playVideo(); }catch(e){} document.removeEventListener('touchend', firstTouch); document.removeEventListener('click', firstTouch); };
+  document.addEventListener('touchend', firstTouch, {once:true});
+  document.addEventListener('click', firstTouch, {once:true});
 
   // Heart burst when starting
 
 // Firework function
 function fireworkBurst(){
   const palette=['#a78bfa','#ff9ac6','#ffd6dd','#c084fc','#ffffff'];
-  const count=140;
+  const count=(window.innerWidth<640?80:140);
   const cx=window.innerWidth/2, cy=window.innerHeight/2;
   for(let i=0;i<count;i++){
     const p=document.createElement('div');
@@ -392,9 +396,12 @@ function spawn(){
   setTimeout(()=>p.remove(), 7200);
 }
 let particleTimer=null;
-function startParticles(){ if(particleTimer) return; particleTimer=setInterval(spawn,260); }
+const PARTICLE_INTERVAL = (window.innerWidth<640?600:260);
+function startParticles(){ if(particleTimer) return; particleTimer=setInterval(spawn, PARTICLE_INTERVAL); }
 function stopParticles(){ if(!particleTimer) return; clearInterval(particleTimer); particleTimer=null; }
 startParticles();
+  // Arka planda performans için durdur/başlat
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopParticles(); else startParticles(); });
 
   // Shooting stars (meteors)
   function spawnMeteor(){
@@ -409,7 +416,8 @@ startParticles();
     ], { duration: 1800+Math.random()*1200, easing:'ease-out' });
     setTimeout(()=>m.remove(), 3200);
   }
-  setInterval(spawnMeteor, 5200);
+  const METEOR_INTERVAL = (window.innerWidth<640?9000:5200);
+  setInterval(spawnMeteor, METEOR_INTERVAL);
 
   // Touch/mouse sway control for the flower
   let dragging=false;
@@ -478,17 +486,17 @@ startParticles();
       { transform:'translateX(6px)' },
       { transform:'translateX(0)' }
     ], { duration: 260, iterations: 2, easing:'ease-in-out' });
-  });
-
-  // Mouse sparkle trail
-  document.addEventListener('mousemove', (e)=>{
-    const s=document.createElement('div');
-    s.textContent = Math.random()>0.5 ? '✦' : '✧';
-    s.style.position='fixed'; s.style.left=e.clientX+'px'; s.style.top=e.clientY+'px'; s.style.pointerEvents='none'; s.style.fontSize='14px'; s.style.opacity='.8';
-    document.body.appendChild(s);
-    s.animate([{transform:'translateY(0px)'},{transform:'translateY(-24px)',opacity:0}],{duration:600,easing:'ease-out'});
-    setTimeout(()=>s.remove(), 620);
-  });
+  });  // Mouse sparkle trail (touch cihazlarda kapalı)
+  if(!('ontouchstart' in window)){
+    document.addEventListener('mousemove', (e)=>{
+      const s=document.createElement('div');
+      s.textContent = Math.random()>0.5 ? '✦' : '✧';
+      s.style.position='fixed'; s.style.left=e.clientX+'px'; s.style.top=e.clientY+'px'; s.style.pointerEvents='none'; s.style.fontSize='14px'; s.style.opacity='.8';
+      document.body.appendChild(s);
+      s.animate([{transform:'translateY(0px)'},{transform:'translateY(-24px)',opacity:0}],{duration:600,easing:'ease-out'});
+      setTimeout(()=>s.remove(), 620);
+    });
+  }
 
   // Keyboard shortcuts: Space => start/stop, M => music
   document.addEventListener('keydown', (ev)=>{
@@ -499,3 +507,4 @@ startParticles();
 
 </body>
 </html>
+
