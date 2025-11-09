@@ -420,10 +420,19 @@ startParticles();
   const yesForgive = document.getElementById('yesForgive');
   const notYet = document.getElementById('notYet');
 
-  // Show game after card opens
-  openGiftBtn.addEventListener('click', ()=>{
-    giftWrap.style.display='block';
-    haptic('success');
+  // Show game after card opens (null-safe)
+  if (openGiftBtn) {
+    openGiftBtn.addEventListener('click', ()=>{
+      if (giftWrap) giftWrap.style.display='block';
+      try{ haptic('success'); }catch(_){ }
+      if (giftCard){ giftCard.classList.add('pulse'); setTimeout(()=>giftCard.classList.remove('pulse'),1200); }
+      const fo=document.getElementById('fadeOverlay'); if(fo){ fo.classList.add('show'); setTimeout(()=>fo.classList.remove('show'),900); }
+      // mini oyun görünür olsun
+      const g=document.getElementById('forgiveGame'); if(g) g.style.display='block';
+      // butona tekrar basılırsa sayfada aşağı kaydır
+      document.getElementById('giftWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  }
     if(giftCard){ giftCard.classList.add('pulse'); setTimeout(()=>giftCard.classList.remove('pulse'),1200); }
     const fo=document.getElementById('fadeOverlay'); if(fo){ fo.classList.add('show'); setTimeout(()=>fo.classList.remove('show'),900); }
     setTimeout(()=> { const g=document.getElementById('forgiveGame'); if(g) g.style.display='block'; }, 600);
