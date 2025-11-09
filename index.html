@@ -246,6 +246,16 @@
   const musicBtn = document.getElementById('music');
   const bgm = document.getElementById('bgm');
   let bgmStarted = false;
+  // Haptic helper
+  function haptic(kind='tap'){
+    if(!('vibrate' in navigator)) return; // desktop'ta sessizce geç
+    const map={tap:[18], soft:[8], success:[12,8,12], heavy:[30]};
+    navigator.vibrate(map[kind]||[15]);
+  }
+  // Gift refs (MINI GAME için GEREKLİ)
+  const openGiftBtn = document.getElementById('openGift');
+  const giftWrap   = document.getElementById('giftWrap');
+  const giftCard   = document.getElementById('giftCard');
   async function startBgm(){
     try{ await bgm.play(); musicBtn.textContent='Müzik Çalıyor 🎵'; musicBtn.disabled=true; bgmStarted=true; }
     catch(e){ musicBtn.textContent='Müziği Başlat (izin ver)'; bgmStarted=false; }
@@ -410,10 +420,19 @@ startParticles();
   const yesForgive = document.getElementById('yesForgive');
   const notYet = document.getElementById('notYet');
 
-  // Show game after card opens
-  openGiftBtn.addEventListener('click', ()=>{
-    giftWrap.style.display='block';
-    haptic('success');
+  // Show game after card opens (null-safe)
+  if (openGiftBtn) {
+    openGiftBtn.addEventListener('click', ()=>{
+      if (giftWrap) giftWrap.style.display='block';
+      try{ haptic('success'); }catch(_){ }
+      if (giftCard){ giftCard.classList.add('pulse'); setTimeout(()=>giftCard.classList.remove('pulse'),1200); }
+      const fo=document.getElementById('fadeOverlay'); if(fo){ fo.classList.add('show'); setTimeout(()=>fo.classList.remove('show'),900); }
+      // mini oyun görünür olsun
+      const g=document.getElementById('forgiveGame'); if(g) g.style.display='block';
+      // butona tekrar basılırsa sayfada aşağı kaydır
+      document.getElementById('giftWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  }
     if(giftCard){ giftCard.classList.add('pulse'); setTimeout(()=>giftCard.classList.remove('pulse'),1200); }
     const fo=document.getElementById('fadeOverlay'); if(fo){ fo.classList.add('show'); setTimeout(()=>fo.classList.remove('show'),900); }
     setTimeout(()=> { const g=document.getElementById('forgiveGame'); if(g) g.style.display='block'; }, 600);
@@ -488,4 +507,3 @@ startParticles();
 
 </body>
 </html>
-
