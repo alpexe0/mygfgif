@@ -1,163 +1,491 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/index.html b/index.html
-index 328c16b788f6cec9ce14f8785d436453a82766cb..70438cec8105fc87bdd846e3abbea1cdfeb420ad 100644
---- a/index.html
-+++ b/index.html
-@@ -214,76 +214,143 @@
-       <div class="card" id="giftCard">
-         <div class="face front">
-           <div class="ribbon">Nisam'a özel</div>
-           <div>
-             <div class="gc-amount">“Bugün seni üzdüğüm için özür dilerim.”</div>
-             <div class="gc-note">Seni üzmek istemedim. Seni çok seviyorum birtanem. — Alp</div>
-             <div class="gc-date">♡ 09.03.2022</div>
-           </div>
-         </div>
-       </div>
- 
- <!-- Affetme Mini Oyunu -->
- <div id="forgiveGame" style="margin-top:16px; display:none; text-align:center; font-size:14px; opacity:.95;">
-   <div style="margin-bottom:10px;">Beni affettin mi? 🤍</div>
-   <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-     <button id="yesForgive" style="background:linear-gradient(135deg,#8bffb0,#4df89f);color:#000;">Affettim 💗</button>
-     <button id="notYet" style="background:linear-gradient(135deg,#ffb3b3,#ff7a7a);color:#000;">Biraz zaman... 🌙</button>
-   </div>
- </div>
- <!-- End -->
- 
- <!-- (A&N watermark removed) -->
- 
- 
- 
--<!-- Arka plan müziği: Yerel MP3 (önerilen) -->
--<!-- Repo köküne music.mp3 yükle. İsim tam olarak 'music.mp3' olsun. -->
--<audio id="bgm" src="music.mp3" preload="auto" loop playsinline></audio>
-+<!-- Arka plan müziği: yerel MP3 (sessiz tutucu) -->
-+<!-- music.mp3 dosyası sessiz; gerçek ses WebAudio ile üretilecek -->
-+<audio id="bgm" preload="auto" loop playsinline>
-+  <source src="music.mp3" type="audio/mpeg" />
-+</audio>
- 
- <script>
-   // Buttons & elements
-   const btn = document.getElementById('toggle');
-   const lily = document.querySelector('.lily');
--  const musicBtn = document.getElementById('music');
--  const bgm = document.getElementById('bgm');
--  let bgmStarted = false;
-+  const musicBtn = document.getElementById('music');
-+  const bgm = document.getElementById('bgm');
-+  let bgmStarted = false;
-+  let audioCtx = null;
-+  let ambientSource = null;
-+  let ambientGain = null;
-+  let ambientBuffer = null;
-   // Haptic helper (mobile titreşim)
-   function haptic(kind='tap'){
-     if(!('vibrate' in navigator)) return;
-     const map={tap:[18], soft:[8], success:[12,8,12], heavy:[30]};
-     navigator.vibrate(map[kind]||[15]);
-   }
-   // Gift elements
-   const openGiftBtn = document.getElementById('openGift');
-   const giftWrap = document.getElementById('giftWrap');
-   const giftCard = document.getElementById('giftCard');
--  async function startBgm(){
--    if(bgmStarted) return; bgmStarted = true;
--    try{ await bgm.play(); musicBtn.textContent='Müzik Çalıyor 🎵'; musicBtn.disabled=true; haptic('success'); }
--    catch(e){ musicBtn.textContent='Müziği Başlat (izin ver)'; bgmStarted=false; }
--  }
-+  function buildAmbientBuffer(ctx){
-+    const duration = 18;
-+    const rate = ctx.sampleRate;
-+    const buffer = ctx.createBuffer(1, rate*duration, rate);
-+    const data = buffer.getChannelData(0);
-+    let seed = 0;
-+    for(let i=0;i<data.length;i++){
-+      const t = i/rate;
-+      const env = Math.sin(Math.PI * (i/data.length));
-+      const bass = Math.sin(2*Math.PI*96*t + Math.sin(2*Math.PI*0.12*t)*0.4)*0.28;
-+      const mid = Math.sin(2*Math.PI*220*t + Math.sin(2*Math.PI*0.07*t)*0.6)*0.24;
-+      const shimmer = Math.sin(2*Math.PI*440*t + Math.sin(2*Math.PI*0.04*t+0.6))*0.18;
-+      seed = (seed * 16807 + 1) % 2147483647;
-+      const noise = ((seed/2147483647)*2-1);
-+      const pad = (bass + mid + shimmer) * env + noise*0.025*env;
-+      data[i] = pad;
-+    }
-+    return buffer;
-+  }
-+
-+  async function ensureAmbient(){
-+    const AC = window.AudioContext || window.webkitAudioContext;
-+    if(!AC) throw new Error('AudioContext desteklenmiyor');
-+    if(!audioCtx) audioCtx = new AC();
-+    if(audioCtx.state === 'suspended') await audioCtx.resume();
-+    if(!ambientBuffer) ambientBuffer = buildAmbientBuffer(audioCtx);
-+    if(!ambientGain){
-+      ambientGain = audioCtx.createGain();
-+      ambientGain.gain.value = 0.22;
-+      ambientGain.connect(audioCtx.destination);
-+    }
-+    if(ambientSource){
-+      try{ ambientSource.stop(); }catch{}
-+      ambientSource.disconnect();
-+    }
-+    ambientSource = audioCtx.createBufferSource();
-+    ambientSource.buffer = ambientBuffer;
-+    ambientSource.loop = true;
-+    ambientSource.connect(ambientGain);
-+    ambientSource.start();
-+  }
-+
-+  async function startBgm(){
-+    if(bgmStarted) return;
-+    bgmStarted = true;
-+    try{ await bgm.play(); }
-+    catch(e){ /* sessiz mp3 otomatik çalmayı reddedebilir */ }
-+    try{
-+      await ensureAmbient();
-+      musicBtn.textContent='Müzik Çalıyor 🎵';
-+      musicBtn.disabled=true;
-+      haptic('success');
-+    }catch(err){
-+      console.warn('Arka plan müziği başlatılamadı', err);
-+      musicBtn.textContent='Müziği Başlat (bloklandı)';
-+      musicBtn.disabled=false;
-+      bgmStarted=false;
-+    }
-+  }
-+
-+  document.addEventListener('visibilitychange', ()=>{
-+    if(!ambientGain) return;
-+    const target = document.hidden ? 0.0001 : 0.22;
-+    const now = audioCtx ? audioCtx.currentTime : 0;
-+    ambientGain.gain.setTargetAtTime(target, now, 0.6);
-+  });
-   musicBtn.addEventListener('click', startBgm);
-   // Mobile autoplay fixer: ilk dokunuşta başlatmayı dene
-   const firstTouch = ()=>{ startBgm(); document.removeEventListener('touchend', firstTouch); document.removeEventListener('click', firstTouch); };
-   document.addEventListener('touchend', firstTouch, {once:true});
-   document.addEventListener('click', firstTouch, {once:true});
- 
-   // Başlat/Durdur düğmesi
-   btn.addEventListener('click', ()=>{
-     lily.classList.toggle('cycle');
-     btn.textContent = lily.classList.contains('cycle') ? 'Durdur' : 'Başlat';
-     if (lily.classList.contains('cycle')) heartBurst();
-   });
- 
-   // Heart burst when starting
- 
-   // Metin döngüsü + sayaçlar
-   const quoteEl = document.getElementById('quote');
-   const sinceEl = document.getElementById('since');
-   const nextEl = document.getElementById('next');
- 
-   const quotes = [
-     '“Kalbim, adını ezberledi.”',
-     '“Sen gülünce, gece mora boyanıyor.”',
-     '“Yanımda olman dünyayı kolaylaştırıyor.”'
-   ];
- 
-EOF
-)
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nisam için 🌸</title>
+<style>
+  :root{ --vio1:#b084ff; --vio2:#8b5cf6; --pink:#ff9ac6; --bg0:#000; }
+  *{box-sizing:border-box}
+  body{margin:0;display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:100vh;background:#000;font-family:Inter,system-ui,sans-serif;color:#fff;text-align:center;position:relative;overflow:hidden}
+  h1{font-weight:600;font-size:clamp(20px,4vw,32px);margin:0 0 18px}
+  button{appearance:none;border:none;background:linear-gradient(135deg,var(--vio2),var(--pink));color:#111;padding:12px 20px;border-radius:14px;font-weight:700;cursor:pointer;transition:transform .2s ease, opacity .2s ease}
+  button:hover{transform:translateY(-1px)}
+
+  /* Ekran koruyucu tarzı arka plan */
+  .bg{position:fixed;inset:-10% -10% -10% -10%;z-index:-2;background:
+    radial-gradient(40% 60% at 20% 30%, rgba(200,120,255,.55) 0%, transparent 60%),
+    radial-gradient(50% 70% at 80% 20%, rgba(140,90,255,.48) 0%, transparent 65%),
+    radial-gradient(60% 80% at 50% 80%, rgba(90,60,200,.45) 0%, transparent 60%),
+    linear-gradient(120deg,#050008,#0b0014,#050008);
+    filter: blur(20px) saturate(1.4);
+    background-size:200% 200%;
+    animation: moveBg 26s ease-in-out infinite alternate, hueSpin 48s linear infinite;
+  }
+  @keyframes moveBg{0%{background-position:0% 0%}50%{background-position:100% 50%}100%{background-position:0% 100%}}
+  @keyframes hueSpin{0%{filter:blur(20px) saturate(1.4) hue-rotate(0deg)}100%{filter:blur(20px) saturate(1.4) hue-rotate(360deg)}}
+
+  /* Ay (daha görünür) */
+  .moon{position:fixed; width:min(28vmin,320px); height:min(28vmin,320px); top:6vh; right:8vw; z-index:-1; border-radius:50%;
+    background:
+      radial-gradient(circle at 30% 30%, #ffffff 0%, #f7ecff 40%, #d5b9ff 62%, rgba(140,90,255,0) 70%),
+      radial-gradient(circle at 65% 60%, rgba(255,255,255,.28) 0 18%, transparent 19% 100%),
+      radial-gradient(circle at 40% 75%, rgba(255,255,255,.18) 0 12%, transparent 13% 100%);
+    box-shadow:
+      0 0 70px 22px rgba(200,120,255,.35),
+      0 0 140px 40px rgba(140,90,255,.22) inset;
+    filter:saturate(1.15);
+    animation: moonFloat 18s ease-in-out infinite alternate;
+  }
+  @keyframes moonFloat{from{transform:translateY(0) scale(1)}to{transform:translateY(-10px) scale(1.02)}}
+
+  /* Lilyum (daha kaliteli çizim + parıltı) */
+.lily.cycle{filter: drop-shadow(0 0 36px rgba(255,130,220,.75)); transition:filter 1.8s ease;}
+.lily.cycle .centerGlow{filter: drop-shadow(0 0 28px rgba(255,220,120,.85));}
+/* Lilyum (daha kaliteli çizim) */
+  .stage{display:flex;flex-direction:column;align-items:center;gap:14px}
+  .lily{width:min(360px,74vw);margin-top:6px;shape-rendering:geometricPrecision}
+  .petal{transform-origin:100px 120px; transition: transform 1.2s cubic-bezier(.22,1,.26,1); stroke: rgba(120,40,120,.35); stroke-width:0.6}
+  .highlight{mix-blend-mode:screen; opacity:.35}
+  .shadow{filter:url(#dropShadow)}
+  .stamen{stroke:#f5d65c; stroke-width:1.5; stroke-linecap:round}
+  .pollen{fill:#ffdf6a; display:none}
+
+  /* Açılmadan önce tomurcuk */
+  .lily:not(.open) .petal{transform:translateY(26px) scaleY(.12)}
+
+  /* Açılmış pozisyondaki dizilim (sabit) */
+  .lily.open .p1{transform:rotate(0deg)}
+  .lily.open .p2{transform:rotate(60deg)}
+  .lily.open .p3{transform:rotate(120deg)}
+  .lily.open .p4{transform:rotate(180deg)}
+  .lily.open .p5{transform:rotate(240deg)}
+  .lily.open .p6{transform:rotate(300deg)}
+
+  /* Sürekli animasyon (nefes & salınım) */
+  /* Kapalı-açık döngü animasyonu */
+  @keyframes bloomCycle {
+    0%{transform:translateY(26px) scaleY(.12);}
+    50%{transform:rotate(var(--rot,0deg)) scale(1);}
+    100%{transform:translateY(26px) scaleY(.12);}
+  }
+  .lily.cycle .petal{animation: bloomCycle 6.5s ease-in-out infinite;}
+
+  /* Eski nefes animasyonu (şu an kullanılmıyor ama kalsın istersen) */
+  .lily.animate .petal{animation: breathe 4.6s ease-in-out infinite}
+  .lily.animate .p2{animation-delay:.15s}
+  .lily.animate .p3{animation-delay:.30s}
+  .lily.animate .p4{animation-delay:.45s}
+  .lily.animate .p5{animation-delay:.60s}
+  .lily.animate .p6{animation-delay:.75s}
+  @keyframes breathe{
+    0%{ transform: rotate(var(--rot,0deg)) scale(1) }
+    50%{ transform: rotate(calc(var(--rot,0deg) + 3deg)) scale(1.02) }
+    100%{ transform: rotate(var(--rot,0deg)) scale(1) }
+  }
+  .centerGlow{filter: drop-shadow(0 0 10px rgba(255,200,90,.35))}
+
+  .quote{opacity:.9; font-size:14px}
+
+  /* Hediye Kartı (flip) */
+  .gift-wrap{margin-top:14px; display:none}
+  .gift-title{margin:8px 0 6px; font-weight:700}
+  .gift{width:min(360px,86vw); height:220px; perspective:1000px; margin:auto}
+  .card{position:relative; width:100%; height:100%; transform-style:preserve-3d; transition:transform .9s cubic-bezier(.22,1,.26,1), box-shadow .9s ease;}
+  .card.pulse{box-shadow:0 0 45px rgba(255,180,255,.75), 0 0 120px rgba(180,120,255,.45);}
+  .card.show-back{transform:rotateY(180deg)}
+  .face{position:absolute; inset:0; border-radius:16px; display:grid; place-items:center; padding:16px; backface-visibility:hidden; border:1px solid rgba(255,255,255,.15); background:linear-gradient(135deg, rgba(176,132,255,.18), rgba(255,154,198,.18)); box-shadow:0 12px 40px rgba(0,0,0,.45)}
+  .face.back{transform:rotateY(180deg); background:linear-gradient(135deg, rgba(30,30,40,.6), rgba(100,0,120,.35));}
+  .gc-amount{font-size:28px; font-weight:800}
+  .gc-note{opacity:.9}
+  .gc-date{opacity:.7;font-size:12px;margin-top:4px;}
+  .code{font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-weight:700; letter-spacing:1px; background:rgba(255,255,255,.08); padding:8px 10px; border-radius:10px}
+  .gift-cta{display:flex; gap:10px; justify-content:center; margin-top:10px}
+  .ribbon{position:absolute; top:12px; left:-6px; background:#8b5cf6; color:#fff; padding:6px 12px; border-radius:12px; font-size:12px; transform:rotate(-6deg)}
+.meteor{position:fixed;top:-2vh;left:0;width:2px;height:2px;background:linear-gradient(90deg,#fff,rgba(255,255,255,0));filter:drop-shadow(0 0 6px #fff);opacity:.8;transform:translate(-10vw,-10vh) rotate(-20deg)}
+.meteor::after{content:'';position:absolute;left:-160px;top:0;width:160px;height:2px;background:linear-gradient(90deg,rgba(255,255,255,.8),rgba(255,255,255,0))}
+.sig{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);font-weight:800;letter-spacing:.02em;opacity:.10;font-size:22px;pointer-events:none;user-select:none}
+.fade-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .7s ease;z-index:0}
+.fade-overlay.show{opacity:1;}
+/* Firework particles */
+.fire-particle{position:fixed;left:0;top:0;width:10px;height:10px;pointer-events:none;z-index:5;transform:rotate(45deg);border-radius:2px;mix-blend-mode:screen;box-shadow:0 0 18px currentColor,0 0 40px currentColor}
+</style>
+</head>
+<body>
+<div class="moon" aria-hidden="true"></div>
+<div class="bg" aria-hidden="true"></div>
+<div class="fade-overlay" id="fadeOverlay"></div>
+
+<div class="stage">
+  <h1>Sen açtıkça, içim de çiçek açıyor Nisam 🌸</h1>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button id="toggle">Başlat</button>
+    <button id="music">Müziği Başlat</button>
+    
+  </div>
+  <div class="quote" id="quote">“Kalbim, adını ezberledi.”</div>
+  <div class="quote" id="since">Birlikte: — gün</div>
+  <div class="quote" id="next">Sonraki yıldönümüne: —</div>
+
+  <svg class="lily" viewBox="0 0 200 240" aria-label="Lilyum">
+    <defs>
+      <!-- Petal gradient and soft highlight -->
+      <radialGradient id="petalG" cx="50%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#ffe8f4"/>
+        <stop offset="60%" stop-color="#ff9ac6"/>
+        <stop offset="100%" stop-color="#ff6ba4"/>
+      </radialGradient>
+      <linearGradient id="highlightG" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity=".8"/>
+        <stop offset="60%" stop-color="#ffffff" stop-opacity="0"/>
+      </linearGradient>
+      <radialGradient id="centerG" cx="50%" cy="50%" r="60%">
+        <stop offset="0%" stop-color="#fff8b8"/>
+        <stop offset="100%" stop-color="#f2c23a"/>
+      </radialGradient>
+      <filter id="dropShadow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="1.8"/>
+        <feOffset dx="0" dy="1"/>
+        <feMerge>
+          <feMergeNode/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+
+      <!-- Tek bir kaliteli taç yaprağı çizimi (Bezier) -->
+      <symbol id="petalShape" viewBox="0 0 200 240">
+        <path d="M100 40
+                 C 90 60, 70 95, 72 130
+                 C 74 165, 98 190, 100 200
+                 C 102 190, 126 165, 128 130
+                 C 130 95, 110 60, 100 40 Z" fill="url(#petalG)" class="shadow"/>
+        <!-- yumuşak parlama -->
+        <path d="M100 48 C 92 66, 78 98, 80 130 C 82 160, 98 182, 100 188" fill="none" stroke="url(#highlightG)" stroke-width="5" class="highlight"/>
+      </symbol>
+    </defs>
+
+    <!-- 6 yaprak: aynı şekli döndürerek çoğalt -->
+    <g class="petal p1" style="--rot:0deg">
+      <use href="#petalShape"/>
+    </g>
+    <g class="petal p2" style="--rot:60deg">
+      <use href="#petalShape"/>
+    </g>
+    <g class="petal p3" style="--rot:120deg">
+      <use href="#petalShape"/>
+    </g>
+    <g class="petal p4" style="--rot:180deg">
+      <use href="#petalShape"/>
+    </g>
+    <g class="petal p5" style="--rot:240deg">
+      <use href="#petalShape"/>
+    </g>
+    <g class="petal p6" style="--rot:300deg">
+      <use href="#petalShape"/>
+    </g>
+
+    <!-- Çiçek merkezi + erkek organlar (stamen) -->
+    <g class="centerGlow">
+      <circle cx="100" cy="130" r="16" fill="url(#centerG)"/>
+      <g class="stamen">
+        <path d="M100 130 C 96 110, 92 100, 90 90"/>
+        <path d="M100 130 C 104 110, 108 100, 110 90"/>
+        <path d="M100 130 C 98 108, 100 98, 100 88"/>
+      </g>
+      <g class="pollen">
+        <circle cx="90" cy="90" r="2"/>
+        <circle cx="110" cy="90" r="2"/>
+        <circle cx="100" cy="88" r="2"/>
+      </g>
+    </g>
+  </svg>
+  <div id="particles" aria-hidden="true" style="position:fixed;inset:0;pointer-events:none;z-index:-1"></div>
+
+  <!-- İnce imza: A -->
+  <div class="sig" aria-hidden="true">A 🤍 N</div>
+
+  
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    <button id="openGift">Hediye Kartını Aç</button>
+    
+  </div>
+  <div class="gift-wrap" id="giftWrap" aria-live="polite">
+    <div class="gift">
+      <div class="card" id="giftCard">
+        <div class="face front">
+          <div class="ribbon">Nisam'a özel</div>
+          <div>
+            <div class="gc-amount">“Bugün seni üzdüğüm için özür dilerim.”</div>
+            <div class="gc-note">Seni üzmek istemedim. Seni çok seviyorum birtanem. — Alp</div>
+            <div class="gc-date">♡ 09.03.2022</div>
+          </div>
+        </div>
+      </div>
+
+<!-- Affetme Mini Oyunu -->
+<div id="forgiveGame" style="margin-top:16px; display:none; text-align:center; font-size:14px; opacity:.95;">
+  <div style="margin-bottom:10px;">Beni affettin mi? 🤍</div>
+  <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+    <button id="yesForgive" style="background:linear-gradient(135deg,#8bffb0,#4df89f);color:#000;">Affettim 💗</button>
+    <button id="notYet" style="background:linear-gradient(135deg,#ffb3b3,#ff7a7a);color:#000;">Biraz zaman... 🌙</button>
+  </div>
+</div>
+<!-- End -->
+
+<!-- (A&N watermark removed) -->
+
+
+
+<!-- Arka plan müziği: Yerel MP3 -->
+<audio id="bgm" src="music.mp3" preload="auto" loop playsinline></audio>
+
+<script>
+  // Buttons & elements
+  const btn = document.getElementById('toggle');
+  const lily = document.querySelector('.lily');
+  const musicBtn = document.getElementById('music');
+  const bgm = document.getElementById('bgm');
+  let bgmStarted = false;
+  async function startBgm(){
+    try{ await bgm.play(); musicBtn.textContent='Müzik Çalıyor 🎵'; musicBtn.disabled=true; bgmStarted=true; }
+    catch(e){ musicBtn.textContent='Müziği Başlat (izin ver)'; bgmStarted=false; }
+  }
+  musicBtn.addEventListener('click', startBgm);
+  // Mobile: ilk dokunuşta dene
+  const firstTouch = ()=>{ if(!bgmStarted) startBgm(); document.removeEventListener('touchstart', firstTouch); document.removeEventListener('click', firstTouch); };
+  document.addEventListener('touchstart', firstTouch, {once:true});
+  document.addEventListener('click', firstTouch, {once:true});
+
+  // Başlat/Durdur düğmesi
+  btn.addEventListener('click', ()=>{
+    lily.classList.toggle('cycle');
+    btn.textContent = lily.classList.contains('cycle') ? 'Durdur' : 'Başlat';
+    if (lily.classList.contains('cycle')) heartBurst();
+  });
+
+  // Heart burst when starting
+
+  // Metin döngüsü + sayaçlar
+  const quoteEl = document.getElementById('quote');
+  const sinceEl = document.getElementById('since');
+  const nextEl = document.getElementById('next');
+
+  const quotes = [
+    '“Kalbim, adını ezberledi.”',
+    '“Sen gülünce, gece mora boyanıyor.”',
+    '“Yanımda olman dünyayı kolaylaştırıyor.”'
+  ];
+  let qi = 0;
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  async function typeText(t){ quoteEl.textContent=''; for(const ch of t){ quoteEl.textContent+=ch; await sleep(24+Math.random()*22);} }
+  async function eraseText(){ while(quoteEl.textContent.length){ quoteEl.textContent=quoteEl.textContent.slice(0,-1); await sleep(12+Math.random()*18);} }
+  (async function rotateQuotes(){ while(true){ await typeText(quotes[qi%quotes.length]); qi++; await sleep(1600); await eraseText(); await sleep(250);} })();
+
+  // Tarih ve sayaçlar (basit, sağlam)
+  const START_DATE = new Date(2022, 2, 9); // 9 Mart 2022 (ay 0-index)
+  function updateCounters(){
+    const now = new Date();
+    // Birlikte geçen gün/saat
+    const diff = now.getTime() - START_DATE.getTime();
+    const days = Math.floor(diff/86400000);
+    const hoursToday = Math.floor((diff%86400000)/3600000);
+    sinceEl.textContent = `Birlikte: ${days} gün • ${hoursToday} saat`;
+    // Sonraki yıldönümü
+    const y = now.getFullYear();
+    const thisYear = new Date(y, 2, 9, 0,0,0);
+    const next = (thisYear.getTime() < now.getTime()) ? new Date(y+1, 2, 9, 0,0,0) : thisYear;
+    const left = next.getTime() - now.getTime();
+    const d = Math.floor(left/86400000);
+    const h = Math.floor((left%86400000)/3600000);
+    const m = Math.floor((left%3600000)/60000);
+    nextEl.textContent = `Sonraki yıldönümüne: ${d}g ${h}s ${m}dk`;
+  }
+  updateCounters();
+  setInterval(updateCounters, 60000);
+
+
+
+// Firework function
+function fireworkBurst(){
+  const palette=['#a78bfa','#ff9ac6','#ffd6dd','#c084fc','#ffffff'];
+  const count=(window.innerWidth<640?80:140);
+  const cx=window.innerWidth/2, cy=window.innerHeight/2;
+  for(let i=0;i<count;i++){
+    const p=document.createElement('div');
+    p.className='fire-particle';
+    const color=palette[Math.floor(Math.random()*palette.length)];
+    p.style.background='currentColor';
+    p.style.color=color;
+    // tam merkeze yerleştir
+    p.style.left=(cx-5)+'px';
+    p.style.top=(cy-5)+'px';
+    document.body.appendChild(p);
+
+    const angle=Math.random()*2*Math.PI;
+    const dist=260+Math.random()*420;
+    const tx=Math.cos(angle)*dist;
+    const ty=Math.sin(angle)*dist;
+
+    p.animate([
+      {transform:'rotate(45deg) translate(0,0) scale(.3)', opacity:0},
+      {transform:`rotate(45deg) translate(${tx}px,${ty}px) scale(1)`, opacity:1, offset:.25},
+      {transform:`rotate(45deg) translate(${tx*1.12}px,${ty*1.12}px) scale(.4)`, opacity:0}
+    ],{duration:1400+Math.random()*700, easing:'cubic-bezier(.22,1,.36,1)'});
+
+    setTimeout(()=>p.remove(), 2200);
+  }
+}
+
+
+  function heartBurst(){
+    for(let i=0;i<22;i++){
+      const el=document.createElement('div'); el.textContent=Math.random()>.5?'💜':'💖';
+      el.style.position='fixed'; el.style.left='50%'; el.style.top='56%'; el.style.transform='translate(-50%,-50%)'; el.style.pointerEvents='none';
+      const dx=(Math.random()*260-130), dy=(Math.random()*-180-40);
+      el.animate([{transform:`translate(${dx}px, ${dy}px) scale(1.4)`, opacity:1},{opacity:0}],{duration:900+Math.random()*500, easing:'ease-out'});
+      document.body.appendChild(el); setTimeout(()=>el.remove(), 1200);
+    }
+  }
+
+  // Minimal particle glow
+  const particles = document.getElementById('particles');
+function spawn(){
+  const safeR = Math.min(window.innerWidth, window.innerHeight) * 0.18; // merkezin etrafında güvenli bölge
+  let xpx, ypx;
+  do{ xpx = Math.random()*window.innerWidth; ypx = Math.random()*window.innerHeight; }
+  while (Math.hypot(xpx-window.innerWidth/2, ypx-window.innerHeight/2) < safeR);
+
+  const p=document.createElement('div');
+  p.className='pt';
+  p.style.position='absolute';
+  p.style.width=p.style.height=(6+Math.random()*8)+'px';
+  p.style.borderRadius='50%';
+  p.style.background='radial-gradient(circle,#b084ff,transparent 60%)';
+  p.style.left=xpx+'px';
+  p.style.top=ypx+'px';
+  p.style.opacity=.0;
+  particles.appendChild(p);
+  p.animate([
+    {opacity:.0, transform:'scale(.6)'},
+    {opacity:.45, transform:'scale(1.6)'},
+    {opacity:0, transform:'scale(.4)'}
+  ],{duration:4000+Math.random()*3000, easing:'ease-in-out'});
+  setTimeout(()=>p.remove(), 7200);
+}
+let particleTimer=null;
+const PARTICLE_INTERVAL = (window.innerWidth<640?600:260);
+function startParticles(){ if(particleTimer) return; particleTimer=setInterval(spawn, PARTICLE_INTERVAL); }
+function stopParticles(){ if(!particleTimer) return; clearInterval(particleTimer); particleTimer=null; }
+startParticles();
+  // Arka planda performans için durdur/başlat
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopParticles(); else startParticles(); });
+
+  // Shooting stars (meteors)
+  function spawnMeteor(){
+    const m=document.createElement('div'); m.className='meteor';
+    const startX = Math.random()*window.innerWidth*0.6 + window.innerWidth*0.2; // 20%-80%
+    m.style.left = startX+'px';
+    document.body.appendChild(m);
+    m.animate([
+      { transform:`translate(-10vw,-10vh) rotate(-20deg)`, opacity:.0 },
+      { transform:`translate(20vw,40vh) rotate(-20deg)`, opacity:1 },
+      { transform:`translate(40vw,80vh) rotate(-20deg)`, opacity:0 }
+    ], { duration: 1800+Math.random()*1200, easing:'ease-out' });
+    setTimeout(()=>m.remove(), 3200);
+  }
+  const METEOR_INTERVAL = (window.innerWidth<640?9000:5200);
+  setInterval(spawnMeteor, METEOR_INTERVAL);
+
+  // Touch/mouse sway control for the flower
+  let dragging=false;
+  let baseRotate=0;
+  lily.style.transition='transform .2s ease-out';
+  lily.addEventListener('pointerdown', (e)=>{ dragging=true; haptic('soft'); });
+  window.addEventListener('pointerup', ()=>{ dragging=false; lily.style.transform='rotate(0deg)'; });
+  window.addEventListener('pointermove', (e)=>{
+    if(!dragging) return; const cx=window.innerWidth/2, cy=window.innerHeight/2; const ang=Math.atan2(e.clientY-cy, e.clientX-cx); const deg=(ang*180/Math.PI)/12; lily.style.transform=`rotate(${deg}deg)`; });
+
+  // Gift card interactions
+  const forgiveGame = document.getElementById('forgiveGame');
+  const yesForgive = document.getElementById('yesForgive');
+  const notYet = document.getElementById('notYet');
+
+  // Show game after card opens
+  openGiftBtn.addEventListener('click', ()=>{
+    giftWrap.style.display='block';
+    haptic('success');
+    if(giftCard){ giftCard.classList.add('pulse'); setTimeout(()=>giftCard.classList.remove('pulse'),1200); }
+    const fo=document.getElementById('fadeOverlay'); if(fo){ fo.classList.add('show'); setTimeout(()=>fo.classList.remove('show'),900); }
+    setTimeout(()=> { const g=document.getElementById('forgiveGame'); if(g) g.style.display='block'; }, 600);
+  });
+
+  // Affettim
+  yesForgive.addEventListener('click', ()=>{
+    haptic('success');
+    // mesaj
+    const msg = document.createElement('div');
+    msg.textContent = 'İyi ki benimlesin. 🤍';
+    msg.style.marginTop = '12px';
+    msg.style.opacity = '0';
+    msg.style.transition = 'opacity .8s ease';
+    forgiveGame.appendChild(msg);
+    requestAnimationFrame(()=> msg.style.opacity = '1');
+    // kalp patlaması
+    // havai fişek
+    fireworkBurst();
+    heartBurst();
+    // çiçek tekrar döngüye girsin
+    lily.classList.add('cycle');
+    btn.textContent = 'Durdur';
+    // yumuşak arka plan parlaması
+    const fg = document.getElementById('fadeOverlay');
+    fg.classList.add('show');
+    setTimeout(()=> fg.classList.remove('show'),1000);
+});
+  // Biraz zaman
+  notYet.addEventListener('click', ()=>{
+    haptic('heavy');
+    // kırmızı wrong efekti (ortada parlayıp kaybolur)
+    const x = document.createElement('div');
+    x.textContent = '❌';
+    Object.assign(x.style, {
+      position:'fixed', left:'50%', top:'50%', transform:'translate(-50%, -50%) scale(0.6)',
+      fontSize:'64px', opacity:'0', pointerEvents:'none', zIndex:'10'
+    });
+    document.body.appendChild(x);
+    x.animate([
+      { transform:'translate(-50%, -50%) scale(0.6)', opacity:0 },
+      { transform:'translate(-50%, -52%) scale(1.2)', opacity:1 },
+      { transform:'translate(-50%, -60%) scale(0.8)', opacity:0 }
+    ], { duration: 950, easing: 'ease-out' });
+    setTimeout(()=> x.remove(), 1000);
+
+    // butonu hafif salla
+    notYet.animate([
+      { transform:'translateX(0)' },
+      { transform:'translateX(-6px)' },
+      { transform:'translateX(6px)' },
+      { transform:'translateX(0)' }
+    ], { duration: 260, iterations: 2, easing:'ease-in-out' });
+  });  // Mouse sparkle trail (touch cihazlarda kapalı)
+  if(!('ontouchstart' in window)){
+    document.addEventListener('mousemove', (e)=>{
+      const s=document.createElement('div');
+      s.textContent = Math.random()>0.5 ? '✦' : '✧';
+      s.style.position='fixed'; s.style.left=e.clientX+'px'; s.style.top=e.clientY+'px'; s.style.pointerEvents='none'; s.style.fontSize='14px'; s.style.opacity='.8';
+      document.body.appendChild(s);
+      s.animate([{transform:'translateY(0px)'},{transform:'translateY(-24px)',opacity:0}],{duration:600,easing:'ease-out'});
+      setTimeout(()=>s.remove(), 620);
+    });
+  }
+
+  // Keyboard shortcuts: Space => start/stop, M => music
+  document.addEventListener('keydown', (ev)=>{
+    if(ev.code==='Space'){ ev.preventDefault(); btn.click(); }
+    if(ev.key==='m' || ev.key==='M'){ musicBtn.click(); }
+  });
+</script>
+
+</body>
+</html>
+
